@@ -27,6 +27,16 @@
   .ok { color:#95ffa5; }
   .ng { color:#ff9e9e; }
   .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background:#0f1720; border:1px solid #263448; border-radius:8px; padding:2px 6px; }
+  /* 追加: スマホ注意バナー */
+  .mobile-note {
+    background: #1b2633;
+    border: 1px solid #2d4158;
+    color: #cfe6ff;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
 </style>
 </head>
 <body>
@@ -35,6 +45,9 @@
 </header>
 <main>
   <div class="card">
+    <!-- 追加行：スマホ注意表示 -->
+    <div class="mobile-note"> スマホで実行する場合は <strong>消音（サイレント）をOFF</strong> にしてください</div>
+
     <p class="muted">各試行で <strong>基準音 → 音1 → 音2</strong> を再生します。どちらが基準と同じ音量か選択してください。<br>安全のため音量は小さめから。スマホ側の「音質向上・ラウドネス均等化・サウンドエフェクト」はオフ推奨。</p>
     <div class="grid">
       <div>
