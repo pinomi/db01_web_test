@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>0.1 dB 基準→2択 テスト (WebAudio)</title>
+<style>
+  :root { --bg:#0b0f14; --fg:#e9eef5; --muted:#9db0c9; --accent:#5fb3ff; --card:#121a22; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; background:var(--bg); color:var(--fg); }
+  header, footer { padding: 16px 20px; background: #0e141b; }
+  header h1 { margin:0; font-size: 1.25rem; }
+  main { padding: 20px; max-width: 900px; margin: 0 auto; }
+  .card { background:var(--card); border:1px solid #223243; border-radius: 16px; padding: 16px; margin: 16px 0; box-shadow: 0 6px 24px rgba(0,0,0,0.22); }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .row > * { flex: 1 1 auto; }
+  label { font-weight:600; font-size:0.95rem; color: var(--muted); }
+  input[type="number"], select, input[type="range"] { width:100%; }
+  input[type="number"], select { background:#0d141b; border:1px solid #2a3a4c; color:var(--fg); border-radius:10px; padding:10px 12px; }
+  .btn { appearance: none; border:1px solid #2a3a4c; background: linear-gradient(180deg, #1a2532, #0e1620); color: var(--fg); border-radius: 12px; padding: 12px 16px; font-weight:700; cursor:pointer; }
+  .btn:hover { border-color:#3a526e; }
+  .btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .muted { color: var(--muted); font-size: 0.9rem; }
+  .tone-buttons button { font-size:1rem; }
+  .pill { display:inline-block; padding:4px 10px; border-radius:999px; background:#0d1722; border:1px solid #2a415d; color:#9cc5ff; font-weight:700; }
+  .big { font-size:1.2rem; }
+  .ok { color:#95ffa5; }
+  .ng { color:#ff9e9e; }
+  .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background:#0f1720; border:1px solid #263448; border-radius:8px; padding:2px 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>0.1 dB 基準→2択 テスト（Web Audio）</h1>
+</header>
+<main>
+  <div class="card">
+    <p class="muted">各試行で <strong>基準音 → 音1 → 音2</strong> を再生します。どちらが基準と同じ音量か選択してください。<br>安全のため音量は小さめから。スマホ側の「音質向上・ラウドネス均等化・サウンドエフェクト」はオフ推奨。</p>
+    <div class="grid">
+      <div>
+        <label>周波数 [Hz]</label>
+        <input id="freq" type="number" min="100" max="8000" step="10" value="1000">
+      </div>
+      <div>
+        <label>トーン長 [秒]</label>
+        <input id="dur" type="number" min="0.1" max="3" step="0.05" value="0.6">
+      </div>
+      <div>
+        <label>間隔（ISI）[秒]（音間）</label>
+        <input id="isi" type="number" min="0" max="3" step="0.05" value="0.45">
+      </div>
+      <div>
+        <label>試行間休憩 [秒]</label>
+        <input id="inter" type="number" min="0" max="10" step="0.5" value="3.0">
+      </div>
+      <div>
+        <label>差 [dB]</label>
+        <input id="delta" type="number" min="0.05" max="1.0" step="0.05" value="0.1">
+      </div>
+      <div>
+        <label>基準レベル（相対）</label>
+        <input id="gain" type="range" min="0" max="1.0" step="0.01" value="0.3">
+      </div>
+      <div>
+        <label>試行回数</label>
+        <input id="trials" type="number" min="2" max="200" step="1" value="20">
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="init" class="btn">初期化（再生許可）</button>
+      <button id="start" class="btn">テスト開始</button>
+      <button id="stop" class="btn">停止</button>
+      <span id="state" class="pill">Idle</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>操作</h3>
+    <div class="row tone-buttons">
+      <button id="playRef" class="btn">基準音を再生</button>
+      <button id="choose1" class="btn" disabled>音1 は基準と同じ</button>
+      <button id="choose2" class="btn" disabled>音2 は基準と同じ</button>
+    </div>
+    <p id="prompt" class="big"></p>
+    <p id="feedback"></p>
+    <p class="muted">※ iOS/Android では、最初に「初期化」ボタンを押すまで自動再生できません（ブラウザの仕様）。</p>
+  </div>
+
+  <div class="card">
+    <h3>結果</h3>
+    <p><span id="progress" class="pill">0 / 0</span>　正答 <strong id="correct">0</strong>　正答率 <strong id="acc">0.0%</strong></p>
+    <p class="muted">検定はローカル版（Python）で行ってください。ここでは集計のみ表示します。</p>
+    <div id="log" class="muted" style="white-space:pre-wrap; font-size:0.9rem;"></div>
+  </div>
+
+  <div class="card">
+    <h3>注意</h3>
+    <ul class="muted">
+      <li>スマホの音量ステップは1クリックで1〜2 dB 変化することがあります。できるだけ固定してください。</li>
+      <li>OSや端末の「音量正規化・自動補正・エンハンサー」は無効にすると差が出やすいです。</li>
+      <li>左右バランスや外音の影響を避けるため、ヘッドホン推奨。</li>
+    </ul>
+  </div>
+</main>
+<footer>
+  <span class="muted">© 2025 0.1 dB Matching Test</span>
+</footer>
+
+<script>
+(() => {
+  let audioCtx = null;
+  let running = false;
+  let trial = 0;
+  let total = 0;
+  let correct = 0;
+  let answerIndex = 1; // 1 or 2
+  const stateEl = document.getElementById('state');
+  const progressEl = document.getElementById('progress');
+  const correctEl = document.getElementById('correct');
+  const accEl = document.getElementById('acc');
+  const logEl = document.getElementById('log');
+  const promptEl = document.getElementById('prompt');
+  const feedbackEl = document.getElementById('feedback');
+
+  const els = {
+    freq: document.getElementById('freq'),
+    dur: document.getElementById('dur'),
+    isi: document.getElementById('isi'),
+    delta: document.getElementById('delta'),
+    gain: document.getElementById('gain'),
+    trials: document.getElementById('trials'),
+    inter: document.getElementById('inter'),
+    init: document.getElementById('init'),
+    start: document.getElementById('start'),
+    stop: document.getElementById('stop'),
+    playRef: document.getElementById('playRef'),
+    choose1: document.getElementById('choose1'),
+    choose2: document.getElementById('choose2'),
+  };
+
+  function setState(txt){ stateEl.textContent = txt; }
+  function sleep(ms){ return new Promise(res => setTimeout(res, ms)); }
+
+  function dbToLin(db){ return Math.pow(10, db/20); }
+
+  function playTone(freq, durSec, gainLin){
+    const fs = 48000;
+    const sr = audioCtx.sampleRate || fs;
+    const buffer = audioCtx.createBuffer(1, Math.floor(durSec * sr), sr);
+    const data = buffer.getChannelData(0);
+    const rampSamples = Math.floor(0.01 * sr); // ~10ms Hann
+    for(let i=0;i<data.length;i++){
+      const t = i/sr;
+      const s = Math.sin(2*Math.PI*freq*t);
+      data[i] = s;
+    }
+    // Apply Hann ramp in/out
+    for(let i=0;i<rampSamples;i++){
+      const w = 0.5 - 0.5*Math.cos(Math.PI * i / rampSamples);
+      data[i] *= w;
+      data[data.length-1-i] *= w;
+    }
+    const src = audioCtx.createBufferSource();
+    const g = audioCtx.createGain();
+    g.gain.value = gainLin;
+    src.buffer = buffer;
+    src.connect(g).connect(audioCtx.destination);
+    return new Promise(res => {
+      src.onended = () => res();
+      src.start();
+    });
+  }
+
+  async function playRefThenTwo(){
+    const f = parseFloat(els.freq.value);
+    const dur = parseFloat(els.dur.value);
+    const isi = parseFloat(els.isi.value);
+    const delta = parseFloat(els.delta.value);
+    const baseGain = parseFloat(els.gain.value);
+
+    // reference
+    promptEl.textContent = "基準音";
+    await playTone(f, dur, baseGain);
+    await sleep(isi*1000);
+
+    // build two options: one same, one ±delta dB
+    const ratio = dbToLin(delta);
+    const altType = Math.random() < 0.5 ? "louder" : "softer";
+    const altGain = altType === "louder" ? baseGain * ratio : baseGain / ratio;
+
+    // randomize order
+    const options = Math.random() < 0.5 ? [baseGain, altGain] : [altGain, baseGain];
+    answerIndex = options[0] === baseGain ? 1 : 2;
+
+    // enable choices after both sounds played
+    els.choose1.disabled = true;
+    els.choose2.disabled = true;
+
+    promptEl.textContent = "音1";
+    await playTone(f, dur, options[0]);
+    await sleep(isi*1000);
+
+    promptEl.textContent = "音2";
+    await playTone(f, dur, options[1]);
+    promptEl.textContent = "回答してください：音1か音2";
+    els.choose1.disabled = false;
+    els.choose2.disabled = false;
+  }
+
+  function updateScore(){
+    progressEl.textContent = `${trial} / ${total}`;
+    correctEl.textContent = `${correct}`;
+    const acc = total > 0 ? (correct/total*100) : 0;
+    accEl.textContent = `${acc.toFixed(1)}%`;
+  }
+
+  async function nextTrial(){
+    if(!running) return;
+    trial++;
+    updateScore();
+    feedbackEl.innerHTML = "";
+    await playRefThenTwo();
+  }
+
+  function appendLog(line){
+    logEl.textContent += line + "\n";
+  }
+
+  els.init.addEventListener('click', async () => {
+    if(!audioCtx){
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    // dummy click to unlock
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    g.gain.value = 0;
+    osc.connect(g).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.02);
+    setState("Ready");
+  });
+
+  els.playRef.addEventListener('click', async () => {
+    if(!audioCtx){ alert("先に『初期化』を押してください"); return; }
+    const f = parseFloat(els.freq.value);
+    const dur = parseFloat(els.dur.value);
+    const baseGain = parseFloat(els.gain.value);
+    await playTone(f, dur, baseGain);
+  });
+
+  els.start.addEventListener('click', async () => {
+    if(!audioCtx){ alert("先に『初期化』を押してください"); return; }
+    running = true;
+    trial = 0;
+    correct = 0;
+    total = parseInt(els.trials.value);
+    logEl.textContent = "";
+    updateScore();
+    setState("Running");
+    await nextTrial();
+  });
+
+  els.stop.addEventListener('click', () => {
+    running = false;
+    setState("Stopped");
+  });
+
+  async function handleAnswer(choice){
+    if(els.choose1.disabled) return; // answers are disabled (not ready)
+    els.choose1.disabled = true;
+    els.choose2.disabled = true;
+    const ok = (choice === answerIndex);
+    correct += ok ? 1 : 0;
+    const msg = ok ? "<span class='ok'>正解</span>" : `<span class='ng'>不正解（正解は 音${answerIndex}）</span>`;
+    feedbackEl.innerHTML = msg;
+    appendLog(`trial=${trial}, resp=${choice}, correct=${answerIndex}, is_correct=${ok?1:0}`);
+    updateScore();
+
+    if(trial >= total){
+      setState("Done");
+      promptEl.textContent = "終了";
+      return;
+    }
+    const rest = parseFloat(els.inter.value);
+    if(rest > 0){
+      promptEl.textContent = `休憩中… ${rest.toFixed(1)} 秒`;
+      await sleep(rest*1000);
+    }
+    await nextTrial();
+  }
+
+  els.choose1.addEventListener('click', () => handleAnswer(1));
+  els.choose2.addEventListener('click', () => handleAnswer(2));
+})();
+</script>
+</body>
+</html>
